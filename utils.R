@@ -228,9 +228,10 @@ performTSNE <- function(t, P, S, tf_idf = TRUE) {
       
       
       cosine = cosine(t(m_adj_uniq))
+      cosine.dist = 1 - cosine
       
       set.seed(1)
-      tsne = Rtsne(cosine, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = T)
+      tsne = Rtsne(cosine.dist, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = T)
       id = paste(paste0(paste(root, "T", sep = " "), period), dim(m_adj_uniq)[2]  , "words", "sparsity", sparsity, sep = "_")
       title = paste0(id, ".png")
       
@@ -356,4 +357,21 @@ plotLeaders <- function(authorNumber, tm, timeframe) {
   
   points(tsne$Y[position,1], tsne$Y[position,2], col = colour, lwd = 2)
   
+}
+
+performKMedoids <- function(cosine.dist, k, tsne) {
+  kmed = pam(cosine.dist, k = k, diss = TRUE, keep.diss = TRUE)
+  filename = paste0(paste("kmedoids", "k", k, sep = "_"), ".png")
+  png(filename, width = 1800, height = 1800, res = 300)
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(kmed$clustering, alpha=0.5), pch=16)
+  dev.off()
+}
+
+performHDBSCAN <- function(cosine.dist, minPts, tsne) {
+  dbscan.result = dbscan::hdbscan(cosine.dist, minPts = minPts)
+
+  filename = paste0(paste("hdbscan", "minpts", minPts, sep = "_"), ".png")
+  png(filename, width = 1800, height = 1800, res = 300)
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", minPts, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(dbscan.result$cluster+1, alpha=0.5), pch=16)
+  dev.off()                                  
 }

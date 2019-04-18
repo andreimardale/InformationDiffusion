@@ -16,7 +16,7 @@ library(tidytext)
 library(dplyr)
 
 library(Rtsne)
-library(ClusterR)
+library(cluster)
 library(dbscan)
 
 library(lsa)
@@ -33,13 +33,22 @@ diffusions_comments = readComments()
 # Merging the submissions and the comments
 posts = mergeSubmissionsAndComments(diffusions_submissions, diffusions_comments)
 
-N = 10
+N = 15
 # Split the posts into a list of timeframes defined by the array of cutting points inside this function.
 t = splitInTimeframes(posts, N, T)
 
+
+
+
+for (i in 1:15) {
+  print(paste("T", i))
+  print(t[[i]][1,]$Date)
+  print(t[[i]][dim(t[[i]])[1],]$Date  )
+}
+
 #### Plotting Wordclouds ####
 content <- character(0)
-for (i in 1:N) {
+for (i in 3:N) {
   content = c(content, paste(unlist(t[[i]]$Content), collapse =" "))
 }
 
@@ -50,7 +59,7 @@ tm = utl$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector
                      stemmer = "porter2_stemmer",
                      split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
                      language = "english", min_num_char = 3, max_num_char = 100,
-                     print_every_rows = 100000, normalize = NULL, tf_idf = F, 
+                     print_every_rows = 100000, normalize = NULL, tf_idf = T, 
                      threads = 6, verbose = T)
 for (i in 1:N) {
   plotWordCloud(getMostFrequentWords(tm, i), print(paste0(paste("timeframe", i, sep="_"), ".png")))
@@ -63,7 +72,7 @@ m_adj <- as.matrix(utl$Term_Matrix_Adjust(sparsity_thresh = 0.1))
 C = cosine(t(m_adj))
 
 
-png("heatmaps.png", width = 1600, height = 1200, res = 300, pointsize = 8)
+png("heatmaps_3to15_tfidf.png", width = 1600, height = 1200, res = 300, pointsize = 8)
 heatmap.2(C, main = paste("Cos similarity between the", N, "periods"), dendrogram = "none", Rowv = FALSE, Colv = FALSE, density.info="none", scale = "none", trace ="none") 
 dev.off()
 
@@ -90,104 +99,95 @@ if (N == 7) {
 }
 
 #### Polarization of users - t-SNE + plotly####
-performTSNE(t, 5:5, lseq(0.97, 1, 7))
 
-T_ = t[[13]] %>%
+T5 = t[[5]] %>%
   group_by(Author) %>%
   summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
   arrange(desc(nr_of_posts))
 
-init = textTinyR::sparse_term_matrix$new(vector_data = T_$text, file_data = NULL, document_term_matrix = TRUE)
+init = textTinyR::sparse_term_matrix$new(vector_data = T5$text, file_data = NULL, document_term_matrix = TRUE)
 
 tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = F,
                       remove_numbers = T, trim_token = T, split_string = T, 
                       stemmer = "porter2_stemmer",
                       split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
                       language = "english", min_num_char = 3, max_num_char = 100,
-                      print_every_rows = 100000, normalize = NULL, tf_idf = T, 
+                      print_every_rows = 100000, normalize = NULL, tf_idf = F, 
                       threads = 6, verbose = T)
 
-m_adj <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = 0.98498730956292))
+m_adj <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = 0.9))
 dim(m_adj)
-m_adj = unique(m_adj)
-dim(m_adj)
+m_adj_uniq = unique(m_adj)
+dim(m_adj_uniq)
+m_adj_uniq = m_adj_uniq[rowSums(m_adj_uniq) > 0,]
+dim(m_adj_uniq)
 
+cosine = cosine(t(m_adj_uniq))
+cosine.dist = 1 - cosine
 
-#euclidean_sim <- dist(scale(m_adj), method = "euclidean")
+#set.seed(1)
+tsne = Rtsne(cosine.dist, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = T)
 
-m_adj = m_adj[rowSums(m_adj) > 0,]
-
-#pc = cmdscale(dist(scale(m_adj), method = "euclidean"), k = 50)
-
-pc_cosine = cmdscale(cosine(t(scale(m_adj))), k = 50)
-
-#cosine_similarity_uniq = unique(t(unique(cosine_sim)))
-
-tsne = Rtsne(pp$x, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = F, pca = F)
-png("tsne.png", width = 1800, height = 1800, res = 300)
-plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 5",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
+png("T5_Tf_72_words.png", width = 1600, height = 1600, res = 300)
+plot(tsne$Y[,1], tsne$Y[,2],main="Tf + Cosine + tSNE",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
 dev.off()
 
-tsne = Rtsne(cosine_similarity_uniq,  dims = 2, perplexity=30, verbose=TRUE, max_iter = 3000)
-png("tsne_30.png", width = 1800, height = 1800, res = 300)
-plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 30",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
-dev.off()
-
-tsne = Rtsne(cosine_similarity_uniq,  dims = 2, perplexity=50, verbose=TRUE, max_iter = 3000)
-png("tsne_50.png", width = 1800, height = 1800, res = 300)
-plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 50",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
-dev.off()
-
-#### Uncomment for interactive view of the t-SNE ####
-# T_ext_by_authors = t[[1]] %>%
-#   group_by(Author) %>%
-#   summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-#   arrange(desc(nr_of_posts))
-# 
-# init = textTinyR::sparse_term_matrix$new(vector_data = T_ext_by_authors$text, file_data = NULL, document_term_matrix = TRUE)
-# 
-# tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = F,
-#                       remove_numbers = T, trim_token = T, split_string = T, 
-#                       stemmer = "porter2_stemmer",
-#                       split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
-#                       language = "english", min_num_char = 3, max_num_char = 100,
-#                       print_every_rows = 100000, normalize = NULL, tf_idf = T, 
-#                       threads = 6, verbose = T)
-# m_adj <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = 1))
-# m_adj_uniq = unique(m_adj)
-# dim(m_adj_uniq)
-# 
-# tsne = Rtsne(scale(m_adj_uniq),  dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000)
-# plot(tsne$Y[,1], tsne$Y[,2], main="perplexity = 30",xlab="Dim1", ylab = "Dim2")
-# plotTSNE(tsne, scale(m_adj_uniq))
-# 
-# library(rgl)
-# plot3d(x=tsne$Y[,1],y=tsne$Y[,2],z=tsne$Y[,3],
-#        type="s",radius=0.5)
+### Uncomment this line for interactive plots! Warning! Set the sparsity thersh to a value s.t. you don't have too many dimensions.
+# plotTSNE(tsne, m_adj_uniq[,1:72])
 ###
 
+### Uncomment this line to run the t-SNE on all time periods
+performTSNE(t, 1:15, 0.9849873, F)
+###
+
+
 #### Clustering ####
-scal_dat = ClusterR::center_scale(m_adj_uniq)
-kmed = ClusterR::Cluster_Medoids(scal_dat, clusters = 2, 
-                                 distance_metric = "pearson_correlation",
-                                 minkowski_p = 1, threads = 6, swap_phase = TRUE, 
-                                 fuzzy = FALSE, verbose = F, seed = 1)
+cosine.dist = 1 - cosine
 
-t1 = sort(colSums(m_adj_uniq[kmed$clusters == 1, ]), decreasing = TRUE)
-d1 = data.frame(word = names(t1),freq=t1)
+#### K-Medoids ####
+performKMedoids(cosine.dist, 2, tsne)
+performKMedoids(cosine.dist, 3, tsne)
+performKMedoids(cosine.dist, 4, tsne)
+performKMedoids(cosine.dist, 5, tsne)
+performKMedoids(cosine.dist, 6, tsne)
 
-t2 = sort(colSums(m_adj_uniq[kmed$clusters == 2, ]), decreasing = TRUE)
-d2 = data.frame(word = names(t2),freq=t2)
+#### HDBSCAN ####
+performHDBSCAN(cosine.dist, 4, tsne)
+performHDBSCAN(cosine.dist, 5, tsne)
+performHDBSCAN(cosine.dist, 6, tsne)
+performHDBSCAN(cosine.dist, 7, tsne)
+performHDBSCAN(cosine.dist, 8, tsne)
+performHDBSCAN(cosine.dist, 9, tsne)
 
-plotWordCloud(d1, "cluster1.png")
-plotWordCloud(d2, "cluster2.png")
+dbscan.result = dbscan::hdbscan(cosine.dist, minPts = 8)
+View(dbscan.result$cluster)
 
-png("kmedoids_tsne_t2.png", width = 1800, height = 1800, res = 300)
-plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T2 (16-cut); perplexity = 30",xlab="Dim1", ylab = "Dim2", col = kmed$clusters)
-dev.off()
+plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(dbscan.result$cluster+1, alpha=0.5), pch=16)
+
+plot(tsne$Y[dbscan.result$cluster == 5,1], tsne$Y[dbscan.result$cluster == 5,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(6, alpha=0.5), pch=16)
+plot(tsne$Y[dbscan.result$cluster == 2,1], tsne$Y[dbscan.result$cluster == 2,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(3, alpha=0.5), pch=16)
+plot(tsne$Y[dbscan.result$cluster == 1,1], tsne$Y[dbscan.result$cluster == 1,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(2, alpha=0.5), pch=16)
+plot(tsne$Y[dbscan.result$cluster == 6,1], tsne$Y[dbscan.result$cluster == 6,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(7, alpha=0.5), pch=16)
+
+
+t_red = sort(colSums(m_adj_uniq[dbscan.result$cluster == 1, ]), decreasing = TRUE)
+d_red = data.frame(word = names(t_red),freq=t_red)
+
+t_purple = sort(colSums(m_adj_uniq[dbscan.result$cluster == 5, ]), decreasing = TRUE)
+d_purple = data.frame(word = names(t_purple),freq=t_purple)
+
+t_green = sort(colSums(m_adj_uniq[dbscan.result$cluster == 2, ]), decreasing = TRUE)
+d_green = data.frame(word = names(t_green),freq=t_green)
+
+t_yellow = sort(colSums(m_adj_uniq[dbscan.result$cluster == 6, ]), decreasing = TRUE)
+d_yellow = data.frame(word = names(t_yellow),freq=t_yellow)
+
+plotWordCloud(d_purple, "d_purple.png")
+plotWordCloud(d_green, "d_green.png")
+plotWordCloud(d_red, "d_red.png")
+plotWordCloud(d_yellow, "d_yellow.png")
 
 #### Putting two timeframes in the same graphic ####
-
 T1 = t[[1]] %>%
   group_by(Author) %>%
   summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%

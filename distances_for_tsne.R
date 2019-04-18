@@ -221,7 +221,56 @@ performTSNE(t, 13, 0.9825932, T)
 
 
 
+#### Before ####
 
+T_ = t[[13]] %>%
+  group_by(Author) %>%
+  summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+  arrange(desc(nr_of_posts))
+
+init = textTinyR::sparse_term_matrix$new(vector_data = T_$text, file_data = NULL, document_term_matrix = TRUE)
+
+tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = F,
+                      remove_numbers = T, trim_token = T, split_string = T, 
+                      stemmer = "porter2_stemmer",
+                      split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
+                      language = "english", min_num_char = 3, max_num_char = 100,
+                      print_every_rows = 100000, normalize = NULL, tf_idf = T, 
+                      threads = 6, verbose = T)
+
+m_adj <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = 0.98498730956292))
+dim(m_adj)
+m_adj = unique(m_adj)
+dim(m_adj)
+
+
+#euclidean_sim <- dist(scale(m_adj), method = "euclidean")
+
+m_adj = m_adj[rowSums(m_adj) > 0,]
+
+#pc = cmdscale(dist(scale(m_adj), method = "euclidean"), k = 50)
+
+pc_cosine = cmdscale(cosine(t(scale(m_adj))), k = 50)
+
+#cosine_similarity_uniq = unique(t(unique(cosine_sim)))
+
+tsne = Rtsne(pp$x, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = F, pca = F)
+png("tsne.png", width = 1800, height = 1800, res = 300)
+plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 5",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
+dev.off()
+
+tsne = Rtsne(cosine_similarity_uniq,  dims = 2, perplexity=30, verbose=TRUE, max_iter = 3000)
+png("tsne_30.png", width = 1800, height = 1800, res = 300)
+plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 30",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
+dev.off()
+
+tsne = Rtsne(cosine_similarity_uniq,  dims = 2, perplexity=50, verbose=TRUE, max_iter = 3000)
+png("tsne_50.png", width = 1800, height = 1800, res = 300)
+plot(tsne$Y[,1], tsne$Y[,2],main="2D Representation - T1 (15-cut); perplexity = 50",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
+dev.off()
+
+
+####
 
 
 
