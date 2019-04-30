@@ -1,3 +1,4 @@
+tol12qualitative=c("#332288", "#6699CC", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499")
 
 
 # Reading the Submissions Data
@@ -85,36 +86,13 @@ splitInTimeframes <- function(posts, N, equal = F) {
     }
   }
   
+  tmp = cut(posts$Date, 15)
+  levels(tmp)
+    
   dates = cut.Date(posts$Date, breaks=pts_N_cut, labels = labels_N_cut)
   print(summary(dates))
   t = split(posts, dates)
   return(t)
-}
-
-preprocessText <- function(docs) {
-  
-  toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
-  docs <- tm_map(docs, toSpace, "/")
-  docs <- tm_map(docs, toSpace, "@")
-  docs <- tm_map(docs, toSpace, "\\|")
-  
-  # Convert the text to lower case
-  docs <- tm_map(docs, content_transformer(tolower))
-  # Remove numbers
-  docs <- tm_map(docs, removeNumbers)
-  # Remove english common stopwords
-  docs <- tm_map(docs, removeWords, stopwords("english"))
-  # Remove your own stop word
-  # specify your stopwords as a character vector
-  docs <- tm_map(docs, removeWords, c("will", "can", "like", "just", "get")) 
-  # Remove punctuations
-  docs <- tm_map(docs, removePunctuation)
-  # Eliminate extra white spaces
-  docs <- tm_map(docs, stripWhitespace)
-  # Text stemming
-  docs <- tm_map(docs, stemDocument)
-  
-  return(docs)
 }
 
 buildTree <- function(diffusion) {
@@ -165,20 +143,6 @@ plotWordCloud <- function(d1, wc_name) {
   dev.off()
 }
 
-
-
-getCosineSimilarity <- function(X) {
-  cos.sim <- function(ix) {
-    A = X[ix[1],]
-    B = X[ix[2],]
-    return( sum(A*B)/sqrt(sum(A^2)*sum(B^2)) )
-  } 
-  n <- nrow(X) 
-  cmb <- expand.grid(i=1:n, j=1:n) 
-  C <- matrix(apply(cmb,1,cos.sim),n,n)
-  return(C)
-}
-
 plotTSNE <- function(tsne, m_adj_uniq) {
   hover_text <- apply(m_adj_uniq, 1, function(x) {
     n <- names(x)
@@ -217,7 +181,7 @@ performTSNE <- function(t, P, S, tf_idf = TRUE) {
                           split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
                           language = "english", min_num_char = 3, max_num_char = 100,
                           print_every_rows = 100000, normalize = NULL, tf_idf = tf_idf, 
-                          threads = 6, verbose = T)
+                          threads = 3, verbose = T)
     
     for (sparsity in S) {
       print(paste("Sparsity", sparsity))
@@ -229,18 +193,16 @@ performTSNE <- function(t, P, S, tf_idf = TRUE) {
       
       cosine = cosine(t(m_adj_uniq))
       cosine.dist = 1 - cosine
+      after.pca = cmdscale(cosine.dist, 50)
       
-      set.seed(1)
-      tsne = Rtsne(cosine.dist, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = T)
+      tsne = Rtsne(after.pca, dims = 2, perplexity=50, verbose=TRUE, max_iter = 2000, is_distance = F, pca = F)
+      
       id = paste(paste0(paste(root, "T", sep = " "), period), dim(m_adj_uniq)[2]  , "words", "sparsity", sparsity, sep = "_")
       title = paste0(id, ".png")
       
       png(title, width = 1600, height = 1600, res = 300)
-      plot(tsne$Y[,1], tsne$Y[,2], main=paste(root, "NoScale", "Cosine", "NoPCA", "t-SNE", sep = "-"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
+      plot(tsne$Y[,1], tsne$Y[,2], main=paste(root, "NoScale", "Cosine", "PCA", "t-SNE", sep = "-"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
       dev.off()
-        
-      
-      
     }
   }
 }
@@ -263,23 +225,60 @@ applyKMeans <- function(tm_uniq, timeframe) {
   return(kmed$clusters)
 }
 
-getTermMatrix <- function(T1, sparsity) {
-  init = textTinyR::sparse_term_matrix$new(vector_data = T1$text, file_data = NULL, document_term_matrix = TRUE)
+getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
+  T_ = t[[time_frame]] %>%
+    group_by(Author) %>%
+    summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+    arrange(desc(nr_of_posts))
   
-  tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = F,
+  docs = VCorpus(DataframeSource(data.frame(doc_id=row.names(T_), text=T_$text)))
+  docs = tm_map(docs, content_transformer(removePunctuation))
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "‘", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "’", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "”", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "“", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "¿", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "„", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "…", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = " ", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "–", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "/", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "@", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "\\|", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "\u2028", replacement = " ", fixed=TRUE)
+  
+  docs <- tm_map(docs, removeNumbers)
+  docs <- tm_map(docs, content_transformer(tolower))
+  docs <- tm_map(docs, removeWords, stopwords("english"))
+  docs <- tm_map(docs, stemDocument)
+  docs <- tm_map(docs, stripWhitespace)
+  
+
+  dtm <- DocumentTermMatrix(docs, control = list(minWordLength = 3, weighting = tfidf, removeNumbers = TRUE, stopwords = TRUE))
+  dtm <- removeSparseTerms(dtm, sparsity)
+  
+  return(Matrix::sparseMatrix(i=dtm$i, j=dtm$j, x=dtm$v, dims=c(dtm$nrow, dtm$ncol), dimnames = dtm$dimnames))
+  
+  # return(dtm)
+}
+
+getTermMatrix <- function(t, time_frame , sparsity, tfidf = T) {
+  T_ = t[[time_frame]] %>%
+    group_by(Author) %>%
+    summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+    arrange(desc(nr_of_posts))
+  
+  init = textTinyR::sparse_term_matrix$new(vector_data = T_$text, file_data = NULL, document_term_matrix = TRUE)
+  
+  tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = T, remove_punctuation_string = F,
                         remove_numbers = T, trim_token = T, split_string = T, 
                         stemmer = "porter2_stemmer",
                         split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
                         language = "english", min_num_char = 3, max_num_char = 100,
-                        print_every_rows = 100000, normalize = NULL, tf_idf = T, 
-                        threads = 6, verbose = T)
-  tm_1 <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = sparsity))
-  print(paste0("Dimension of the term matrix ", paste(dim(tm_1)[1], dim(tm_1)[2], sep = ",") ))
-  tm_1_uniq = unique(tm_1)
-  
-  print(paste0("Dimension of the unique rows term matrix ", paste(dim(tm_1_uniq)[1], dim(tm_1_uniq)[2], sep = ",")))
-  
-  return(tm_1_uniq)
+                        print_every_rows = 100000, normalize = NULL, tf_idf = tfidf, 
+                        threads = 3, verbose = T)
+  tm_adj <- init$Term_Matrix_Adjust(sparsity_thresh = sparsity)
+  return(tm_adj)
 }
 
 getTransition <- function(authorNumber, tm_1, tm_14) {
@@ -363,7 +362,7 @@ performKMedoids <- function(cosine.dist, k, tsne) {
   kmed = pam(cosine.dist, k = k, diss = TRUE, keep.diss = TRUE)
   filename = paste0(paste("kmedoids", "k", k, sep = "_"), ".png")
   png(filename, width = 1800, height = 1800, res = 300)
-  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(kmed$clustering, alpha=0.5), pch=16)
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(tol12qualitative[kmed$clustering], alpha=0.5), pch=16)
   dev.off()
 }
 

@@ -1,25 +1,4 @@
-library(gtools)
-library(ggplot2)
-library(gplots)
-library(plotly)
-
-library(data.tree)
-
-library("tm")
-library("SnowballC")
-library("wordcloud")
-library("RColorBrewer")
-
-library(topicmodels)
-library(tidyr)
-library(tidytext)
-library(dplyr)
-
-library(Rtsne)
-library(cluster)
-library(dbscan)
-
-library(lsa)
+source('./library_loader.R')
 
 setwd("../Desktop/M1 Internship/Code")
 source("./utils.R")
@@ -34,21 +13,13 @@ diffusions_comments = readComments()
 posts = mergeSubmissionsAndComments(diffusions_submissions, diffusions_comments)
 
 N = 15
+
 # Split the posts into a list of timeframes defined by the array of cutting points inside this function.
-t = splitInTimeframes(posts, N, T)
-
-
-
-
-for (i in 1:15) {
-  print(paste("T", i))
-  print(t[[i]][1,]$Date)
-  print(t[[i]][dim(t[[i]])[1],]$Date  )
-}
-
-#### Plotting Wordclouds ####
+t = splitInTimeframes(posts, N)
+#####
+#### [DONE] Plotting Wordclouds ####
 content <- character(0)
-for (i in 3:N) {
+for (i in 1:N) {
   content = c(content, paste(unlist(t[[i]]$Content), collapse =" "))
 }
 
@@ -59,25 +30,23 @@ tm = utl$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector
                      stemmer = "porter2_stemmer",
                      split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
                      language = "english", min_num_char = 3, max_num_char = 100,
-                     print_every_rows = 100000, normalize = NULL, tf_idf = T, 
+                     print_every_rows = 100000, normalize = NULL, tf_idf = F, 
                      threads = 6, verbose = T)
 for (i in 1:N) {
   plotWordCloud(getMostFrequentWords(tm, i), print(paste0(paste("timeframe", i, sep="_"), ".png")))
 }
 plotWordCloud(getOverallMostFrequentWords(tm), "timeframe_all.png")
 
-#### Plotting the heatmaps with the evolution of thematics ####
+#### [DONE] Plotting the heatmaps with the evolution of thematics ####
 m_adj <- as.matrix(utl$Term_Matrix_Adjust(sparsity_thresh = 0.1))
-#C = getCosineSimilarity(m_adj)
 C = cosine(t(m_adj))
 
-
 png("heatmaps_3to15_tfidf.png", width = 1600, height = 1200, res = 300, pointsize = 8)
-heatmap.2(C, main = paste("Cos similarity between the", N, "periods"), dendrogram = "none", Rowv = FALSE, Colv = FALSE, density.info="none", scale = "none", trace ="none") 
+heatmap.2(C, main = paste("Equal-Cuts Periods", 3, "to", N, "periods"), labRow = as.character(3:15), labCol = as.character(3:15), dendrogram = "none", Rowv = FALSE, Colv = FALSE, density.info="none", scale = "none", trace ="none") 
 dev.off()
 
 
-#### Perfoming LDA on T1, T3, T6 for 7-cut ####
+#### [DONE] Perfoming LDA on T1, T3, T6 for 7-cut ####
 if (N == 7) {
   ldaOut = LDA(tm,3, method="Gibbs", control=list(nstart=5, seed = list(2003,5,63,100001,765), best=TRUE, burnin = 4000, iter = 2000, thin=500))
   ap_topics <- tidy(ldaOut, matrix = "beta")
@@ -98,111 +67,27 @@ if (N == 7) {
   dev.off()
 }
 
-#### Polarization of users - t-SNE + plotly####
+#### [DONE - R5] Performing PCA on Covariance Matrix ####
+source('./PCA_on_covariance_matrix.R')
 
-T5 = t[[5]] %>%
-  group_by(Author) %>%
-  summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-  arrange(desc(nr_of_posts))
+#### [DONE - R5] Plotting Users and Terms in Topic Space ####
+source("./24.04_LSA_users_and_terms_in_topics_space.R")
+source("./25.04_LDA_users_and_terms_in_topics_space.R")
 
-init = textTinyR::sparse_term_matrix$new(vector_data = T5$text, file_data = NULL, document_term_matrix = TRUE)
-
-tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = F,
-                      remove_numbers = T, trim_token = T, split_string = T, 
-                      stemmer = "porter2_stemmer",
-                      split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
-                      language = "english", min_num_char = 3, max_num_char = 100,
-                      print_every_rows = 100000, normalize = NULL, tf_idf = F, 
-                      threads = 6, verbose = T)
-
-m_adj <- as.matrix(init$Term_Matrix_Adjust(sparsity_thresh = 0.9))
-dim(m_adj)
-m_adj_uniq = unique(m_adj)
-dim(m_adj_uniq)
-m_adj_uniq = m_adj_uniq[rowSums(m_adj_uniq) > 0,]
-dim(m_adj_uniq)
-
-cosine = cosine(t(m_adj_uniq))
-cosine.dist = 1 - cosine
-
-#set.seed(1)
-tsne = Rtsne(cosine.dist, dims = 2, perplexity=30, verbose=TRUE, max_iter = 2000, is_distance = T)
-
-png("T5_Tf_72_words.png", width = 1600, height = 1600, res = 300)
-plot(tsne$Y[,1], tsne$Y[,2],main="Tf + Cosine + tSNE",xlab="Dim1", ylab = "Dim2", col = adjustcolor(1, alpha=0.5), pch=16)
-dev.off()
-
-### Uncomment this line for interactive plots! Warning! Set the sparsity thersh to a value s.t. you don't have too many dimensions.
-# plotTSNE(tsne, m_adj_uniq[,1:72])
-###
-
-### Uncomment this line to run the t-SNE on all time periods
-performTSNE(t, 1:15, 0.9849873, F)
-###
+#### [DONE - R5] Polarization of users - t-SNE + plotly####
+source('./26.04_TSNE_users_in_words_space.R')
+#### [DONE - R5] Clustering ####
+source('./26.04_CLUSTERING_users_in_word_space.R')
 
 
-#### Clustering ####
-cosine.dist = 1 - cosine
-
-#### K-Medoids ####
-performKMedoids(cosine.dist, 2, tsne)
-performKMedoids(cosine.dist, 3, tsne)
-performKMedoids(cosine.dist, 4, tsne)
-performKMedoids(cosine.dist, 5, tsne)
-performKMedoids(cosine.dist, 6, tsne)
-
-#### HDBSCAN ####
-performHDBSCAN(cosine.dist, 4, tsne)
-performHDBSCAN(cosine.dist, 5, tsne)
-performHDBSCAN(cosine.dist, 6, tsne)
-performHDBSCAN(cosine.dist, 7, tsne)
-performHDBSCAN(cosine.dist, 8, tsne)
-performHDBSCAN(cosine.dist, 9, tsne)
-
-dbscan.result = dbscan::hdbscan(cosine.dist, minPts = 8)
-View(dbscan.result$cluster)
-
-plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(dbscan.result$cluster+1, alpha=0.5), pch=16)
-
-plot(tsne$Y[dbscan.result$cluster == 5,1], tsne$Y[dbscan.result$cluster == 5,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(6, alpha=0.5), pch=16)
-plot(tsne$Y[dbscan.result$cluster == 2,1], tsne$Y[dbscan.result$cluster == 2,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(3, alpha=0.5), pch=16)
-plot(tsne$Y[dbscan.result$cluster == 1,1], tsne$Y[dbscan.result$cluster == 1,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(2, alpha=0.5), pch=16)
-plot(tsne$Y[dbscan.result$cluster == 6,1], tsne$Y[dbscan.result$cluster == 6,2],main=paste("hdbscan", "minpts", 8, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(7, alpha=0.5), pch=16)
-
-
-t_red = sort(colSums(m_adj_uniq[dbscan.result$cluster == 1, ]), decreasing = TRUE)
-d_red = data.frame(word = names(t_red),freq=t_red)
-
-t_purple = sort(colSums(m_adj_uniq[dbscan.result$cluster == 5, ]), decreasing = TRUE)
-d_purple = data.frame(word = names(t_purple),freq=t_purple)
-
-t_green = sort(colSums(m_adj_uniq[dbscan.result$cluster == 2, ]), decreasing = TRUE)
-d_green = data.frame(word = names(t_green),freq=t_green)
-
-t_yellow = sort(colSums(m_adj_uniq[dbscan.result$cluster == 6, ]), decreasing = TRUE)
-d_yellow = data.frame(word = names(t_yellow),freq=t_yellow)
-
-plotWordCloud(d_purple, "d_purple.png")
-plotWordCloud(d_green, "d_green.png")
-plotWordCloud(d_red, "d_red.png")
-plotWordCloud(d_yellow, "d_yellow.png")
-
-#### Putting two timeframes in the same graphic ####
-T1 = t[[1]] %>%
-  group_by(Author) %>%
-  summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-  arrange(desc(nr_of_posts))
-
-tm_1_uniq = getTermMatrix(T1, 0.98498730956292)
+#### [TODO !!!] Putting two timeframes in the same graphic ####
+tm_1 = as.matrix(getTermMatrix(t, 1, 0.98498730956292))
+tm_1_uniq = unique(tm_1)
 clusters.T1 = applyKMeans(tm_1_uniq, "T1")
 
 
-T14 = t[[14]] %>%
-  group_by(Author) %>%
-  summarise( nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-  arrange(desc(nr_of_posts))
-
-tm_14_uniq = getTermMatrix(T14, 0.98498730956292)
+tm_14 = as.matrix(getTermMatrix(t, 14, 0.98498730956292))
+tm_14_uniq = unique(tm_14)
 clusters.T14 = applyKMeans(tm_14_uniq, "T14")
 
 rez = smartbind(tm_1_uniq, tm_14_uniq)
@@ -229,7 +114,7 @@ legend("topleft",c("Cluster 1","Cluster 2"), cex=.8, col=c("purple","yellow"),pc
 dev.off()
 
 
-####################
+#### [TODO !!!] Transitions ####
 common_authors = intersect(T1$Author, T14$Author)
 T1$index = rownames(T1)
 T14$index = rownames(T14)
@@ -267,7 +152,7 @@ for (auth in 1:21) {
     
 }
 
-#### Leaders #####
+#### [TODO !!!] Leaders #####
 
 png("tsne_T1_T14_50_leaders.png", width = 1800, height = 1800, res = 300)
 colors = c(rep(1, dim(tm_1_uniq)[1]), rep(2, dim(tm_14_uniq)[1]))
