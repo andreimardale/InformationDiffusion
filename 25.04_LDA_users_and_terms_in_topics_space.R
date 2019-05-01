@@ -1,52 +1,47 @@
+#### Plotting Users and Terms in Topic Space ###
 source('./library_loader.R')
 source("./utils.R")
 
-#### Plotting Users and Terms in Topic Space ####
-T_ = t[[13]] %>%
+# Initialize data
+t = initializeData()
+PERIOD = 2
+
+T_ = t[[PERIOD]] %>%
   group_by(Author) %>%
   summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
   arrange(desc(nr_of_posts))
 
-tm_13 = as.matrix(getTermMatrixWithTM(t, 13, sparsity = 0.98498730956292, weightTf))
-dim(tm_13)
-tm_13 = unique(tm_13)
-dim(tm_13)
-tm_13 = tm_13[rowSums(tm_13) > 0,]
-
+tm_ = as.matrix(getTermMatrixWithTM(t, PERIOD, sparsity = 0.98498730956292, weightTf))
+dim(tm_)
+tm_ = unique(tm_)
+dim(tm_)
+tm_ = tm_[rowSums(tm_) > 0,]
 
 set.seed(12345)
-K = 60
-model <- FitLdaModel(dtm = tm_13, k = K, iterations = 2000, burnin = 180, alpha = 0.1, beta = 0.05,
-                     optimize_alpha = TRUE, calc_likelihood = TRUE, calc_r2 = TRUE, cpus = 3)
-
-png(paste0(paste("lda", K, "logliloglikelihood.", sep = "_"), "png"), width = 3200, height = 1600, res = 300)
-plot(model$log_likelihood, type="l", main = paste("Log Likelihood - 50 topics - R2 score", model$r2, sep = " "))
-dev.off()
-
-#### Print topics ####
-tidy_beta <- data.frame(topic = as.integer(stringr::str_replace_all(rownames(model$phi), "t_", "")), 
-                        model$phi, 
-                        stringsAsFactors = FALSE) %>%
-  gather(term, beta, -topic) %>% 
-  tibble::as_tibble()
-
-ap_top_terms <- tidy_beta %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>%
-  ungroup() %>%
-  arrange(topic, -beta)
+K = 10
+model = LDA(tm_, k = K, method = "Gibbs", control = list(burnin = 1000, iter = 1000, keep = 50, alpha = 0.1))
 
 
-png(paste0(paste("lda", K, "topics.", sep = "_"), "png"), width = 3200, height = 1800, res = 300)
-ap_top_terms %>%
+png(paste0("topics_T", PERIOD, ".png"), width = 3200, height = 1800, res = 300)
+termsPerTopic(model) %>%
   mutate(term = reorder(term, beta)) %>%
   ggplot(aes(term, beta, fill = factor(topic))) +
+  ggtitle("Top 10 words for each discovered topic")+
   geom_col(show.legend = FALSE) +
   facet_wrap(~ topic, scales = "free") +
   coord_flip()
 dev.off()
-#####
-      
+
+
+rez = topicmodels::posterior(fitted)
+phi = rez$terms
+theta = rez$topics
+gamma = t(CalcGamma(phi, theta, p_docs = Matrix::rowSums(tm_13)))
+
+A = rbind(theta, gamma)
+KLMatrix <- KL(A)
+
+
 A = rbind(model$theta, t(model$gamma))
 KLMatrix <- KL(A)
 after.pca = cmdscale(KLMatrix, 50)

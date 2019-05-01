@@ -49,18 +49,11 @@ dev.off()
 #### [DONE] Perfoming LDA on T1, T3, T6 for 7-cut ####
 if (N == 7) {
   ldaOut = LDA(tm,3, method="Gibbs", control=list(nstart=5, seed = list(2003,5,63,100001,765), best=TRUE, burnin = 4000, iter = 2000, thin=500))
-  ap_topics <- tidy(ldaOut, matrix = "beta")
-  ap_topics
-  ap_top_terms <- ap_topics %>%
-    group_by(topic) %>%
-    top_n(10, beta) %>%
-    ungroup() %>%
-    arrange(topic, -beta)
-  
-  png("topics_T3.png", width = 3200, height = 1800, res = 300)
-  ap_top_terms %>%
+  png(paste0("topics_T", 3, ".png"), width = 3200, height = 1800, res = 300)
+  termsPerTopic(ldaOut) %>%
     mutate(term = reorder(term, beta)) %>%
     ggplot(aes(term, beta, fill = factor(topic))) +
+    ggtitle("Top 10 words for each discovered topic")+
     geom_col(show.legend = FALSE) +
     facet_wrap(~ topic, scales = "free") +
     coord_flip()

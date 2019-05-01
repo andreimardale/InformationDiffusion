@@ -1,5 +1,20 @@
 tol12qualitative=c("#332288", "#6699CC", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499")
 
+# Initializing Data
+initializeData <- function(N = 15) {
+  # Reading the Submissions Data
+  diffusions_submissions = readSubmissions()
+  
+  # Reading the Comments Data
+  diffusions_comments = readComments()
+  
+  # Merging the submissions and the comments
+  posts = mergeSubmissionsAndComments(diffusions_submissions, diffusions_comments)
+  
+  # Split the posts into a list of timeframes defined by the array of cutting points inside this function.
+  t = splitInTimeframes(posts, N)
+  return(t)
+}
 
 # Reading the Submissions Data
 readSubmissions <- function() {
@@ -373,4 +388,15 @@ performHDBSCAN <- function(cosine.dist, minPts, tsne) {
   png(filename, width = 1800, height = 1800, res = 300)
   plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", minPts, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(dbscan.result$cluster+1, alpha=0.5), pch=16)
   dev.off()                                  
+}
+
+termsPerTopic <- function(model) {
+  ap_topics <- tidy(model, matrix = "beta")
+  ap_top_terms <- ap_topics %>%
+    group_by(topic) %>%
+    top_n(10, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta)
+  
+  return(ap_top_terms)
 }
