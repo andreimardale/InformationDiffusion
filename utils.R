@@ -1,4 +1,4 @@
-tol12qualitative=c("#332288", "#6699CC", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499")
+colPal = c("black", "#B15928", "#B2DF8A", "green3", "blue", "cyan","magenta", "yellow", brewer.pal(n = 12, name = "Paired"))
 
 # Initializing Data
 initializeData <- function(N = 15) {
@@ -115,9 +115,9 @@ buildTree <- function(diffusion) {
   tmp = tmp[order(tmp$Date), ]
   
   root = tmp[is.na(tmp$Parent.ID),]
-  tmp = rbind(root, tmp)
-  
-  tmp = tmp[-c(dim(tmp)[1]),]
+  # tmp = rbind(root, tmp)
+  # 
+  # tmp = tmp[-c(dim(tmp)[1]),]
   dest = ifelse(is.na(tmp$Comment.ID), tmp$Submission.ID, tmp$Comment.ID)
   res = data.frame("from" = tmp$Parent.ID, "to" = dest)
   tree <- as.Node(res[-1,],mode = "network")
@@ -158,19 +158,31 @@ plotWordCloud <- function(d1, wc_name) {
   dev.off()
 }
 
-plotTSNE <- function(tsne, m_adj_uniq) {
-  hover_text <- apply(m_adj_uniq, 1, function(x) {
+plotTSNE <- function(tsne, m_adj_uniq, cr = "black") {
+  
+  hover_text <- lapply(1:nrow(m_adj_uniq), function(position, df) {
+    x = df[position,]
+    x = (head(sort(x, T), 10))
     n <- names(x)
     t <- paste(n, x, sep = ": ", collapse = "<br>")
+    t = paste(t, paste("reply", rownames(df)[position], sep = ":"), sep = "<br>")
     return(t)
-  }
-  )
+    
+  }, m_adj_uniq)
+  
+  # hover_text <- apply(m_adj_uniq, 1, function(x) {
+  #   x = (head(sort(x, T), 10))
+  #   n <- names(x)
+  #   t <- paste(n, x, sep = ": ", collapse = "<br>")
+  #   t = paste(t, "cucu", sep = "<br>")
+  #   return(t)
+  # })
   plotdata <- data.frame(tsne_x = tsne$Y[, 1], tsne_y = tsne$Y[, 2],
                          hover_text = hover_text)
   plt2 <- ggplot(plotdata) + 
-    geom_point(aes(x = tsne_x, y = tsne_y, text = hover_text))
+    geom_point(aes(colour = cr, x = tsne_x, y = tsne_y, text = hover_text))
   
-  ggplotly(plt2, width = 3200, height = 1600, res = 300)
+  ggplotly(plt2)
 }
 
 lseq <- function(from, to, length.out) {
@@ -240,14 +252,24 @@ applyKMeans <- function(tm_uniq, timeframe) {
   return(kmed$clusters)
 }
 
+
 getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
-  T_ = t[[time_frame]] %>%
-    group_by(Author) %>%
-    summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-    arrange(desc(nr_of_posts))
+  if(time_frame != -1){
+    T_ = t[[time_frame]] %>%
+      group_by(Author) %>%
+      summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+      arrange(desc(nr_of_posts))
+  }
+  else {
+    T_ = t %>%
+      group_by(Author) %>%
+      summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+      arrange(desc(nr_of_posts))
+  }
   
   docs = VCorpus(DataframeSource(data.frame(doc_id=row.names(T_), text=T_$text)))
   docs = tm_map(docs, content_transformer(removePunctuation))
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "will", replacement = " ", fixed=TRUE)
   docs <- tm_map(docs, content_transformer(gsub), pattern = "‘", replacement = " ", fixed=TRUE)
   docs <- tm_map(docs, content_transformer(gsub), pattern = "’", replacement = " ", fixed=TRUE)
   docs <- tm_map(docs, content_transformer(gsub), pattern = "”", replacement = " ", fixed=TRUE)
@@ -264,7 +286,13 @@ getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
   
   docs <- tm_map(docs, removeNumbers)
   docs <- tm_map(docs, content_transformer(tolower))
-  docs <- tm_map(docs, removeWords, stopwords("english"))
+  docs <- tm_map(docs, removeWords, c(stopwords("english"),
+                                      "ill", "youll", "theyll", "hell", "shell",
+                                      "ive", "youve", "hes", "shes", "weve", "youv", "theyve",
+                                      "will", "wont", "wouldnt", "couldnt", "arent", "didnt", "wasnt", "isnt", "dont",
+                                      "theyr", "theyv", "etc", "amp", "also",
+                                      "gonna", "ing", "whether", "if", "unless", "yes", "no", "or",
+                                      "just", "one", "can", "like", "get", "now"))
   docs <- tm_map(docs, stemDocument)
   docs <- tm_map(docs, stripWhitespace)
   
@@ -276,6 +304,44 @@ getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
   
   # return(dtm)
 }
+
+getTermMatrixWithTMForOneReply <- function(text, sparsity, tfidf = weightTf) {
+  docs = VCorpus(VectorSource(text))
+  docs = tm_map(docs, content_transformer(removePunctuation))
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "will", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "‘", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "’", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "”", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "“", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "¿", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "„", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "…", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = " ", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "–", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "/", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "@", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "\\|", replacement = " ", fixed=TRUE)
+  docs <- tm_map(docs, content_transformer(gsub), pattern = "\u2028", replacement = " ", fixed=TRUE)
+  
+  docs <- tm_map(docs, removeNumbers)
+  docs <- tm_map(docs, content_transformer(tolower))
+  docs <- tm_map(docs, removeWords, c(stopwords("english"),
+                                      "ill", "youll", "theyll", "hell", "shell",
+                                      "ive", "youve", "hes", "shes", "weve", "youv", "theyve",
+                                      "will", "wont", "wouldnt", "couldnt", "arent", "didnt", "wasnt", "isnt", "dont",
+                                      "theyr", "theyv", "etc", "amp", "also",
+                                      "gonna", "ing", "whether", "if", "unless", "yes", "no", "or",
+                                      "just", "one", "can", "like", "get", "now"))
+  docs <- tm_map(docs, stemDocument)
+  docs <- tm_map(docs, stripWhitespace)
+  
+  
+  dtm <- DocumentTermMatrix(docs, control = list(minWordLength = 3, weighting = tfidf, removeNumbers = TRUE, stopwords = TRUE))
+  dtm <- removeSparseTerms(dtm, sparsity)
+  
+  return(Matrix::sparseMatrix(i=dtm$i, j=dtm$j, x=dtm$v, dims=c(dtm$nrow, dtm$ncol), dimnames = dtm$dimnames))
+}
+
 
 getTermMatrix <- function(t, time_frame , sparsity, tfidf = T) {
   T_ = t[[time_frame]] %>%
@@ -373,30 +439,80 @@ plotLeaders <- function(authorNumber, tm, timeframe) {
   
 }
 
-performKMedoids <- function(cosine.dist, k, tsne) {
-  kmed = pam(cosine.dist, k = k, diss = TRUE, keep.diss = TRUE)
+performKMedoids <- function(distMatrix, k, tsne) {
+  kmed = pam(distMatrix, k = k, diss = TRUE, keep.diss = TRUE)
   filename = paste0(paste("kmedoids", "k", k, sep = "_"), ".png")
   png(filename, width = 1800, height = 1800, res = 300)
-  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(tol12qualitative[kmed$clustering], alpha=0.5), pch=16)
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colPal[kmed$clustering], alpha=0.5), pch=16)
   dev.off()
+  return(kmed)
 }
 
-performHDBSCAN <- function(cosine.dist, minPts, tsne) {
-  dbscan.result = dbscan::hdbscan(cosine.dist, minPts = minPts)
+performHDBSCAN <- function(distMatrix, minPts, tsne) {
+  dbscan.result = dbscan::hdbscan(distMatrix, minPts = minPts)
 
   filename = paste0(paste("hdbscan", "minpts", minPts, sep = "_"), ".png")
   png(filename, width = 1800, height = 1800, res = 300)
-  plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", minPts, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(dbscan.result$cluster+1, alpha=0.5), pch=16)
-  dev.off()                                  
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", minPts, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colPal[dbscan.result$cluster+1], alpha=0.5), pch=16)
+  legend("topleft", paste0("Cluster ", sort(unique(dbscan.result$cluster))),
+         cex=.8, col=colPal[1 + sort(unique(dbscan.result$cluster))], pch = rep(16,8))
+  dev.off()
+  return(dbscan.result$cluster)
 }
 
-termsPerTopic <- function(model) {
+performDBSCANandPlot8BiggestClusters <- function(distMatrix, minPts, tsne) {
+  dbscan.result = dbscan::hdbscan(distMatrix, minPts = minPts)
+  df = as.data.frame(dbscan.result$cluster)
+  
+  re7 = df %>%
+    group_by(dbscan.result$cluster) %>%
+    summarise( nr_of_elems = n()) %>%
+    arrange(desc(nr_of_elems)) %>%
+    head(n=8)
+  
+  df2 = df
+  for (i in (unique(df$`dbscan.result$cluster`))){
+    if (!(i %in% re7$`dbscan.result$cluster`)) {
+      df2[df==i]<-1
+    }
+  }
+  for (i in 1:8) {
+    df2[df==as.integer(re7[i,1])]<-as.integer(rownames(re7)[i])
+  }
+  
+  png(paste( minPts,"dbscan.png", sep = "-"), width = 1800, height = 1800, res = 300)
+  plot(tsne$Y[,1], tsne$Y[,2],main=paste("hdbscan", "minpts", minPts, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(df2$`dbscan.result$cluster`, alpha=0.5), pch=16)
+  dev.off() 
+  
+  # for (cluster in 1: dim(re7)[1]) {
+  #   png(paste("detailed", "cluster", cluster, sep = "_"), width = 1600, height = 1600, res = 300)
+  #   plot(tsne$Y[df2$`dbscan.result$cluster` == cluster,1], tsne$Y[df2$`dbscan.result$cluster` == cluster,2],main=paste("kmedoids", "cluster", cluster, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(cluster, alpha=0.5), pch=16)
+  #   dev.off()
+  #   
+  #   t_cluster = sort(colSums(tm_[df2$`dbscan.result$cluster`== cluster, ]), decreasing = TRUE)
+  #   d_cluster = data.frame(word = names(t_cluster),freq=t_cluster)
+  #   
+  #   plotWordCloud(d_cluster, paste("wordcloud", "cluster", cluster, sep = "_"))
+  # }
+  
+}
+
+printTermsPerTopic <- function(model, top_n = 10, period) {
+  png(paste0(paste0("lda", model@k),"_topics_T", period, ".png"), width = 3200, height = 1800, res = 300)
+  
   ap_topics <- tidy(model, matrix = "beta")
   ap_top_terms <- ap_topics %>%
     group_by(topic) %>%
-    top_n(10, beta) %>%
+    top_n(top_n, beta) %>%
     ungroup() %>%
-    arrange(topic, -beta)
+    arrange(topic, -beta) %>%
+    mutate(term = reorder(term, beta))
   
-  return(ap_top_terms)
+  print(ggplot(data = ap_top_terms, aes(term, beta, fill = factor(topic))) +
+    ggtitle("Top 10 words for each discovered topic")+
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") +
+    coord_flip())
+  
+  dev.off()
 }

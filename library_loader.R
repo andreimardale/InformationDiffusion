@@ -11,7 +11,7 @@ library(ggplot2)
 library(gplots)
 library(plotly)
 
-# library(data.tree)
+library(data.tree)
 
 library("tm")
 library("SnowballC")
@@ -26,3 +26,6 @@ library(dplyr)
 library(Rtsne)
 library(cluster)
 library(dbscan)
+
+
+library(gridExtra)
