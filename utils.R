@@ -1,7 +1,11 @@
 colPal = c("black", "#B15928", "#B2DF8A", "green3", "blue", "cyan","magenta", "yellow", brewer.pal(n = 12, name = "Paired"))
+specPal = c("#F8766D", "#D89000", "#A3A500", "#39B600", "#00BF7D", "#00BFC4", "#00B0F6", "#9590FF", "#E76BF3", "#FF62BC")
+specPal_T2 = c(specPal[2], specPal[6], specPal[7], specPal[4], specPal[8], specPal[3], specPal[1], specPal[9], specPal[10], specPal[5])
+specPal_T14 = c(specPal[6], specPal[2], specPal[4], specPal[9], specPal[1], specPal[3], specPal[10], specPal[8], specPal[7], specPal[5])
+
 
 # Initializing Data
-initializeData <- function(N = 15) {
+initializeData <- function(N = 15, splitt = T) {
   # Reading the Submissions Data
   diffusions_submissions = readSubmissions()
   
@@ -12,7 +16,17 @@ initializeData <- function(N = 15) {
   posts = mergeSubmissionsAndComments(diffusions_submissions, diffusions_comments)
   
   # Split the posts into a list of timeframes defined by the array of cutting points inside this function.
-  t = splitInTimeframes(posts, N)
+  if(splitt == TRUE) {
+    t = splitInTimeframes(posts, N)
+    for (p in 1:N) {
+      t[[p]]$Content = str_replace_all(str_replace_all(t[[p]]$Content, "&gt;.*\n", ""), "\n", "")
+    }
+  }
+  else {
+    t = posts
+    t$Content = str_replace_all(str_replace_all(t$Content, "&gt;.*\n", ""), "\n", "")
+  }
+  
   return(t)
 }
 
@@ -98,31 +112,18 @@ splitInTimeframes <- function(posts, N, equal = F) {
                     as.Date("2019-03-15", format="%Y-%m-%d"), as.Date("2019-03-22", format="%Y-%m-%d"), 
                     as.Date("2019-03-30", format="%Y-%m-%d"), as.Date("2019-04-06", format="%Y-%m-%d"))
       labels_N_cut = c("T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14", "T15")
+    } else if (N == 3) { 
+      pts_N_cut = c(as.Date("2016-05-03", format="%Y-%m-%d"),
+                    as.Date("2016-06-20", format="%Y-%m-%d"),
+                    as.Date("2016-06-25", format="%Y-%m-%d"),
+                    as.Date("2016-06-30", format="%Y-%m-%d"))
+      labels_N_cut = c("T4", "T5", "T6")
     }
   }
-  
-  tmp = cut(posts$Date, 15)
-  levels(tmp)
-    
   dates = cut.Date(posts$Date, breaks=pts_N_cut, labels = labels_N_cut)
   print(summary(dates))
   t = split(posts, dates)
   return(t)
-}
-
-buildTree <- function(diffusion) {
-  tmp = subset(posts, Submission.ID == diffusion)
-  tmp = tmp[order(tmp$Date), ]
-  
-  root = tmp[is.na(tmp$Parent.ID),]
-  # tmp = rbind(root, tmp)
-  # 
-  # tmp = tmp[-c(dim(tmp)[1]),]
-  dest = ifelse(is.na(tmp$Comment.ID), tmp$Submission.ID, tmp$Comment.ID)
-  res = data.frame("from" = tmp$Parent.ID, "to" = dest)
-  tree <- as.Node(res[-1,],mode = "network")
-  print(tree)
-  #return(tree)
 }
 
 getMostFrequentWords <- function(termMatrix, timePeriod) {
@@ -144,7 +145,7 @@ getOverallMostFrequentWords <- function(termMatrix) {
 }
 
 plotWordCloud <- function(d1, wc_name) {
-  png(wc_name, width=1000,height=800)
+  png(wc_name, width=1200,height=1200)
   par(mfrow=c(1,2))
   set.seed(1234)
   wordcloud(words = d1$word, freq = d1$freq, min.freq = 1,
@@ -154,7 +155,7 @@ plotWordCloud <- function(d1, wc_name) {
   barplot(d1[1:10,]$freq, las = 2, names.arg = d1[1:10,]$word,
           col ="lightblue", main ="Most frequent words",
           ylab = "Word frequencies")
-  
+
   dev.off()
 }
 
@@ -170,13 +171,6 @@ plotTSNE <- function(tsne, m_adj_uniq, cr = "black") {
     
   }, m_adj_uniq)
   
-  # hover_text <- apply(m_adj_uniq, 1, function(x) {
-  #   x = (head(sort(x, T), 10))
-  #   n <- names(x)
-  #   t <- paste(n, x, sep = ": ", collapse = "<br>")
-  #   t = paste(t, "cucu", sep = "<br>")
-  #   return(t)
-  # })
   plotdata <- data.frame(tsne_x = tsne$Y[, 1], tsne_y = tsne$Y[, 2],
                          hover_text = hover_text)
   plt2 <- ggplot(plotdata) + 
@@ -252,7 +246,6 @@ applyKMeans <- function(tm_uniq, timeframe) {
   return(kmed$clusters)
 }
 
-
 getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
   if(time_frame != -1){
     T_ = t[[time_frame]] %>%
@@ -261,13 +254,16 @@ getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
       arrange(desc(nr_of_posts))
   }
   else {
+    cluster <- new_cluster(16)
     T_ = t %>%
       group_by(Author) %>%
+      partition(cluster) %>%
       summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+      collect() %>% 
       arrange(desc(nr_of_posts))
   }
   
-  docs = VCorpus(DataframeSource(data.frame(doc_id=row.names(T_), text=T_$text)))
+  docs = VCorpus(DataframeSource(data.frame(doc_id=T_$Author, text=T_$text)))
   docs = tm_map(docs, content_transformer(removePunctuation))
   docs <- tm_map(docs, content_transformer(gsub), pattern = "will", replacement = " ", fixed=TRUE)
   docs <- tm_map(docs, content_transformer(gsub), pattern = "‘", replacement = " ", fixed=TRUE)
@@ -292,17 +288,16 @@ getTermMatrixWithTM <- function(t, time_frame , sparsity, tfidf = weightTf) {
                                       "will", "wont", "wouldnt", "couldnt", "arent", "didnt", "wasnt", "isnt", "dont",
                                       "theyr", "theyv", "etc", "amp", "also",
                                       "gonna", "ing", "whether", "if", "unless", "yes", "no", "or",
-                                      "just", "one", "can", "like", "get", "now"))
+                                      "just", "one", "can", "like", "get", "now",
+                                      "voter", "voted", "vote", "brexit", "people", "want", "think", "know", "say", "even",
+                                      "time", "year", "still", "thing", "let"))
   docs <- tm_map(docs, stemDocument)
   docs <- tm_map(docs, stripWhitespace)
-  
 
   dtm <- DocumentTermMatrix(docs, control = list(minWordLength = 3, weighting = tfidf, removeNumbers = TRUE, stopwords = TRUE))
   dtm <- removeSparseTerms(dtm, sparsity)
   
-  return(Matrix::sparseMatrix(i=dtm$i, j=dtm$j, x=dtm$v, dims=c(dtm$nrow, dtm$ncol), dimnames = dtm$dimnames))
-  
-  # return(dtm)
+  return (Matrix::sparseMatrix(i=dtm$i, j=dtm$j, x=dtm$v, dims=c(dtm$nrow, dtm$ncol), dimnames = dtm$dimnames))
 }
 
 getTermMatrixWithTMForOneReply <- function(text, sparsity, tfidf = weightTf) {
@@ -340,26 +335,6 @@ getTermMatrixWithTMForOneReply <- function(text, sparsity, tfidf = weightTf) {
   dtm <- removeSparseTerms(dtm, sparsity)
   
   return(Matrix::sparseMatrix(i=dtm$i, j=dtm$j, x=dtm$v, dims=c(dtm$nrow, dtm$ncol), dimnames = dtm$dimnames))
-}
-
-
-getTermMatrix <- function(t, time_frame , sparsity, tfidf = T) {
-  T_ = t[[time_frame]] %>%
-    group_by(Author) %>%
-    summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
-    arrange(desc(nr_of_posts))
-  
-  init = textTinyR::sparse_term_matrix$new(vector_data = T_$text, file_data = NULL, document_term_matrix = TRUE)
-  
-  tm = init$Term_Matrix(sort_terms = FALSE, to_lower = T, remove_punctuation_vector = T, remove_punctuation_string = F,
-                        remove_numbers = T, trim_token = T, split_string = T, 
-                        stemmer = "porter2_stemmer",
-                        split_separator = " \r\n\t.,;:()?!//", remove_stopwords = T,
-                        language = "english", min_num_char = 3, max_num_char = 100,
-                        print_every_rows = 100000, normalize = NULL, tf_idf = tfidf, 
-                        threads = 3, verbose = T)
-  tm_adj <- init$Term_Matrix_Adjust(sparsity_thresh = sparsity)
-  return(tm_adj)
 }
 
 getTransition <- function(authorNumber, tm_1, tm_14) {
@@ -439,12 +414,15 @@ plotLeaders <- function(authorNumber, tm, timeframe) {
   
 }
 
-performKMedoids <- function(distMatrix, k, tsne) {
+performKMedoids <- function(distMatrix, k, tsne, plot = T) {
   kmed = pam(distMatrix, k = k, diss = TRUE, keep.diss = TRUE)
   filename = paste0(paste("kmedoids", "k", k, sep = "_"), ".png")
-  png(filename, width = 1800, height = 1800, res = 300)
-  plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colPal[kmed$clustering], alpha=0.5), pch=16)
-  dev.off()
+  if(plot == T) {
+    png(filename, width = 1800, height = 1800, res = 300)
+    plot(tsne$Y[,1], tsne$Y[,2],main=paste("kmedoids", "k", k, sep = "_"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colPal[kmed$clustering], alpha=0.5), pch=16)
+    dev.off()
+  }
+  
   return(kmed)
 }
 
@@ -515,4 +493,64 @@ printTermsPerTopic <- function(model, top_n = 10, period) {
     coord_flip())
   
   dev.off()
+}
+
+getPredictions <- function(T_, contentColumnNumber = 3) {
+  colnames(T_)[contentColumnNumber] = "text"
+  
+  corp_reddit <- corpus(T_)
+  dfmat_reddit <- dfm(corp_reddit, remove_numbers = TRUE, remove_punct = TRUE, remove_url = TRUE,
+                      remove = c('*.tt', '*.uk', '*.com', 'rt')) %>%
+    dfm_remove(c(stopwords('en'))) %>% 
+    dfm_remove("\\p{Z}", valuetype = "regex") %>%
+    dfm_wordstem(language = "english") %>%
+    dfm_select(min_nchar = 3) %>%
+    dfm_trim(min_termfreq = 3)
+  
+  docvars(dfmat_reddit, "id_numeric") <- 1:ndoc(dfmat_reddit)
+  
+  predicted_class_reddit <- predict(nb_big_nohash, newdata = dfmat_reddit, type = "probability", force = T)
+  colnames(predicted_class_reddit) = c("remain_prob", "leave_prob")
+  
+  return(as.data.frame(predicted_class_reddit))
+}
+
+getAggregatePredictResults <- function(T_) {
+  T_agg = T_ %>%
+    group_by(Author) %>%
+    summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+    arrange(Author)
+  
+  r = getPredictions(T_)
+  
+  T_rez = data.frame(T_$Author, T_$Content, r$leave_prob)
+  colnames(T_rez) = c("Author", "text", "leave_prob")
+  
+  T_grouped = T_rez %>%
+    group_by(Author) %>%
+    summarise(leave_probability = mean(leave_prob)) %>%
+    arrange(Author)
+  T_grouped$Author = NULL
+  
+  T_agg = cbind(T_agg, T_grouped)
+}
+
+getAggregatePredictResultsForTwitter <- function(T_) {
+  T_agg = T_ %>%
+    group_by(Author) %>%
+    partition(cluster) %>%
+    summarize(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
+    collect() %>%
+    arrange(Author)
+  
+  r = getPredictions(T_agg)
+  
+  T_agg = data.frame(T_agg$Author, r$leave_prob)
+  colnames(T_agg) = c("Author", "leave_prob")
+  
+  T_agg = merge(T_, T_agg, by = "Author")
+  T_agg$prediction = ifelse(T_agg$leave_prob >= 0.75, 1, ifelse(T_agg$leave_prob >= 0.25, 2, 0))
+  T_agg$leave_prob = NULL
+
+  return(T_agg)  
 }

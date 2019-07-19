@@ -81,7 +81,6 @@ for (i in 2:no_of_clusters) {
 
 
 
-
 no_of_posts = dim(t[[PERIOD]])[1]
 post_probabilities = matrix(0, ncol = K)[-1,]
 
@@ -97,39 +96,29 @@ model_list <- TmParallelApply(X = 1:no_of_posts, FUN = function(p){
   post_probabilities = rbind(post_probabilities, 0.01 * post_probability)
 }, cpus = 20)
 
-# save(model_list, file="post_probabilities.RData")
-
+save(model_list, file="post_probabilities.RData")
 
 non_null_model_list = model_list
 names(non_null_model_list) <- seq_along(non_null_model_list)
 non_null_model_list = plyr::compact(non_null_model_list)
 
+post_probabilities <- data.frame(matrix(unlist(non_null_model_list, use.names = T), nrow=length(non_null_model_list), byrow=T))
+rownames(post_probabilities) = c(names(non_null_model_list))
 
-View(names(non_null_model_list))
+rownames(mean_clusters) = c(paste0("c", 1:dim(mean_clusters)[1]))
+colnames(mean_clusters) = c(paste0("X", 1:dim(mean_clusters)[2]))
 
-post_probabilities <- data.frame(matrix(unlist(model_list, use.names = T), nrow=length(model_list), byrow=T))
+mc = as.data.frame(mean_clusters)
 
-test = data.frame(non_null_model_list)
+View(t[[PERIOD]]$Content)
+tm_p = as.matrix(getTermMatrixWithTMForOneReply(t[[PERIOD]]$Content[4184], sparsity = 0.98498730956292, weightTf))
+View(tm_p)
 
-KLM_Centroid_Posts = KL(rbind(mean_clusters[2,], post_probabilities))
-order(KLM_Centroid_Posts[1,])
-
-
-
-
-tm_p = as.matrix(getTermMatrixWithTMForOneReply(t[[PERIOD]]$Content[4], sparsity = 0.98498730956292, weightTf))
-post_probability = matrix(0, nrow = 1, ncol = K)
-topicmodels::posterior(model, tm_p)$topics
-
-
-
-
-KLM_Centroid_Users <- KL(rbind(mean_clusters[2,], theta))
-rn_theta = rownames(theta)[order(KLM_Centroid_Users[1,]) - 1][1:20]
-rn_theta
-
-
-
+for (i in 2:no_of_clusters) {
+  print(paste("Centroid", i-1))
+  KLM_Centroid_Posts = KL(as.matrix(rbind(mc[i,], post_probabilities)))
+  print(t[[PERIOD]]$Content[order(KLM_Centroid_Posts[1,]) - 1][1:10])
+}
 
 
 

@@ -8,10 +8,12 @@ t = initializeData()
 ## Set verbose to TRUE to print distances from every topic to every topic in each period ##
 verbose = FALSE
 number_of_cpus = 3
+# number_of_cpus = 13
 ##
 
 K = 10  ## The number of topics ##
 period_list <- c(1, 2, 3, 4)
+# period_list <- c(1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15)
 P = length(period_list)
 
 model_list <- TmParallelApply(X = period_list, FUN = function(p){

@@ -4,7 +4,7 @@ source("./utils.R")
 
 # Initialize data
 t = initializeData()
-PERIOD = 2
+PERIOD = 3
 
 T_ = t[[PERIOD]] %>%
   group_by(Author) %>%
@@ -39,15 +39,15 @@ legend("topleft",c("Users"), cex=.8, col=c("black"),pch=c(16))
 dev.off()
 
 ### Use PCA before performing t-SNE ####
-# after.pca = cmdscale(KLMatrix, 50)
-# tsne = Rtsne(after.pca, dims = 2, perplexity=50, verbose=TRUE, max_iter = 2000, is_distance = F, pca = F)
-# png(paste0(paste("lda", K, "tsne_PCA.", sep = "_"), "png"), width = 3200, height = 1600, res = 300)
-# par(mfrow=c(1,2))
-# plot(tsne$Y[,1], tsne$Y[,2],main=paste0(K,"_LDA + KL + PCA + tSNE"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colors, alpha=0.5), pch=16)
-# legend("topleft",c("Users","Terms"), cex=.8, col=c("black","red"),pch=c(16,16))
-# plot(tsne$Y[1: dim(theta)[1],1], tsne$Y[1: dim(theta)[1],2],main=paste0(K,"_LDA + KL + PCA + tSNE"),xlab="Dim1", ylab = "Dim2", col = adjustcolor(colors, alpha=0.5), pch=16)
-# legend("topleft",c("Users"), cex=.8, col=c("black"),pch=c(16))
-# dev.off()
+after.pca = cmdscale(KLMatrix, 50)
+tsne = Rtsne(after.pca, dims = 2, perplexity=50, verbose=TRUE, max_iter = 2000, is_distance = F, pca = F)
+png(paste0(paste("lda", K, "tsne_PCA.", sep = "_"), "png"), width = 3200, height = 1600, res = 300)
+par(mfrow=c(1,2))
+plot(tsne$Y[,1], tsne$Y[,2],main=paste0(K,"_LDA + KL + PCA + tSNE"), xlab="Dim1", ylab = "Dim2", col = adjustcolor(colors, alpha=0.5), pch=16)
+legend("topleft",c("Users","Terms"), cex=.8, col=c("black","red"),pch=c(16,16))
+plot(tsne$Y[1: dim(theta)[1],1], tsne$Y[1: dim(theta)[1],2],main=paste0(K,"_LDA + KL + PCA + tSNE"),xlab="Dim1", ylab = "Dim2", col = adjustcolor(colors, alpha=0.5), pch=16)
+legend("topleft",c("Users"), cex=.8, col=c("black"),pch=c(16))
+dev.off()
 ####
 
 ### Uncomment to plot interactively ####
@@ -61,7 +61,3 @@ plotdata <- data.frame(tsne_x = tsne$Y[, 1], tsne_y = tsne$Y[, 2], hover_text = 
 plt2 <- ggplot(plotdata) + geom_point(aes(x = tsne_x, y = tsne_y, text = hover_text), color = adjustcolor(colors, alpha=0.5))
 ggplotly(plt2)
 ###
-
-
-
-

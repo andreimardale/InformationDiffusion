@@ -39,11 +39,3 @@ for (cluster in 1:K) {
   plotWordCloud(d_cluster, paste("wordcloud", "cluster", cluster, sep = "_"))
 }
 
-
-
-
-
-
-
-
-

@@ -4,17 +4,15 @@ source("./utils.R")
 
 # Initialize data
 t = initializeData()
-PERIOD = 8
+PERIOD = 3
 
 T_ = t[[PERIOD]] %>%
   group_by(Author) %>%
   summarise(nr_of_posts = n(), text = paste0(Content, collapse = " ")) %>%
   arrange(desc(nr_of_posts))
-  
+
 tm_ = unique(as.matrix(getTermMatrixWithTM(t, PERIOD, sparsity = 0.93, weightTf)))
 tm_ = tm_[rowSums(tm_) > 0,]
-dim(tm_)
-View(tm_)
 
 cosine.dist = 1 - cosine(t(tm_))
 after.pca = cmdscale(cosine.dist, 50)
@@ -32,7 +30,3 @@ dev.off()
 ### Uncomment this line to run the t-SNE on all time periods
 # performTSNE(t, 1:15, 0.98498730956292, F)
 ###
-
-dbscan.result = performHDBSCAN(cosine.dist, 10, tsne)
-plotTSNE(tsne, tm_, adjustcolor(colPal[dbscan.result+1], alpha=0.5))
-  
