@@ -2,16 +2,16 @@ source('./library_loader.R')
 source("./utils.R")
 library('multidplyr')
 
-no_cores = 18
+no_cores = 3
 
-load("../Data/data_dt_brexittweets.Rdata")  ## To be changed with full set
-nb_big_nohash <- readRDS("./nb_with_hashtags_july.rds") ## To be changed with the trained version
+load("../Data/data_circulate/data_dt_brexittweets_sample.Rdata")  ## To be changed with full set
+nb_big_nohash <- readRDS("../Data/nb_with_hashtags_july.rds") ## To be changed with the trained version
 
-diffusions = data_dt_brexittweets %>% group_by(clean_text) %>% summarise(count = n())
+diffusions = data_dt_brexittweets_sample %>% group_by(clean_text) %>% summarise(count = n())
 diffusions = subset(diffusions, diffusions$count > 1)
 diffusions$diffusion_id = 1 : dim(diffusions)[1]
 
-data = na.omit(merge(data_dt_brexittweets, diffusions))
+data = na.omit(merge(data_dt_brexittweets_sample, diffusions))
 colnames(data)[1] = c("Content")
 colnames(data)[3] = c("Date")
 colnames(data)[5] = c("Author")
@@ -37,14 +37,56 @@ train = data.frame()
 
 for(p in 1 : (length(t) - 1)){
   print(paste("Period", p))
+  p = 1
   
+  q = quantile(t[[p]]$diffusion_id)
+  p1 = subset(t[[p]], t[[p]]$diffusion_id >= q[[1]] & t[[p]]$diffusion_id < q[[2]])
+  p2 = subset(t[[p]], t[[p]]$diffusion_id >= q[[2]] & t[[p]]$diffusion_id < q[[3]])
+  p3 = subset(t[[p]], t[[p]]$diffusion_id >= q[[3]] & t[[p]]$diffusion_id < q[[4]])
+  p4 = subset(t[[p]], t[[p]]$diffusion_id >= q[[4]] & t[[p]]$diffusion_id <= q[[5]])
+  
+  T1_common_authors = p4[p4$Author %in% common_authors,]
+  
+  T1_user_activity = T1_common_authors %>%
+    group_by(Author) %>%
+    partition(cluster) %>%
+    summarize(retweets = sum(retweet == T),
+              initial_tweets = sum(retweet == F)) %>%
+    collect() %>%
+    arrange(Author)
+  
+  T1_post_success = T1_common_authors[T1_common_authors$retweet == F] %>%
+    group_by(Author) %>%
+    partition(cluster) %>%
+    summarise(initial_tweets = sum(retweet == F),
+              dif_sizes = paste0(count, collapse = " "),
+              diffusions = paste0(diffusion_id, collapse = " ")) %>%
+    collect() %>%
+    arrange(Author)
+  
+  T1_post_success$Author = as.character(T1_post_success$Author)
+  
+  pp4 = T1_post_success
+  
+  
+  trez = rbind(pp1, pp2, pp3, pp4)
+  T1_post_success = trez %>%
+    group_by(Author) %>%
+    partition(cluster) %>%
+    summarise(initial_tweets = sum(initial_tweets),
+              dif_sizes = sum(dif_sizes),
+              diffusions = paste0(diffusions, collapse = " ")) %>%
+    collect() %>%
+    arrange(Author)
+  
+  
+  #################################################
   T_rez1 = getAggregatePredictResultsForTwitter(t[[p]])
   T_rez2 = getAggregatePredictResultsForTwitter(t[[p+1]])
   
   common_authors = intersect(T_rez1$Author, T_rez2$Author)
   
   T1_common_authors = T_rez1[T_rez1$Author %in% common_authors,]
-  T2_common_authors = T_rez2[T_rez2$Author %in% common_authors,]
   
   T1_user_activity = T1_common_authors %>%
     group_by(Author) %>%

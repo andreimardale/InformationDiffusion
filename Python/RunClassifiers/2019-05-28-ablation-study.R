@@ -1,5 +1,6 @@
 library(reticulate)
 use_python("/usr/bin/python3", required=TRUE)
+setwd("./Python/RunClassifiers/")
 
 require(parallel)
 require(caret)
